@@ -600,13 +600,6 @@ filter_sig = (
     tuple(sorted(years_set)),
     tuple(sorted(meet_prefix_set)),
 )
-
-# フィルタが前回から変わっていれば、自動調整を再び有効化する初期状態へ戻す
-if ss.get("last_filter_sig") != filter_sig:
-    ss["last_filter_sig"] = filter_sig
-    ss["min_edge_user_touched"] = False         # 手動フラグ解除
-    ss["min_edge_weight"] = DEFAULT_MINEDGE     # デフォルトに戻す（=自動調整が走る条件）
-    
 # ===== ▼ワードクラウド 画像表示部 =====
 
 st.divider()

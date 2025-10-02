@@ -23,14 +23,14 @@ import json as _json
 import math
 
 
-st.set_page_config(page_title="ことばトレンド｜市政ワード分析", layout="wide", page_icon="⚖️")
+st.set_page_config(page_title="ことばトレンド県政", layout="wide", page_icon="⚖️")
 
 # ========================
 # 設定
 # ========================
 # S3の場所
 S3_BUCKET =  st.secrets["AWS-KEY"]["DATA_BUCKET_NAME"]
-S3_KEY    = "trending-words/mayor-and-council.jsonl.zst"
+S3_KEY    = "pref_yamaguchi/trending-words/pref-yamaguchi.jsonl.zst"
 AWS_REGION = "us-west-2"  
 AWS_ACCESS_KEY = st.secrets["AWS-KEY"]["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY = st.secrets["AWS-KEY"]["AWS_SECRET_KEY"]
@@ -482,7 +482,7 @@ def parse_date_from_chunk_head(chunk_id: str) -> pd.Timestamp | None:
 # ========================
 # UI 本体
 # ========================
-st.title("⚖️ことばトレンド｜市政ワード分析")
+st.title("⚖️ことばトレンド｜県政ワード分析")
 st.markdown("""
 <span style="color:#6b7280">
 発言者や会議などを選んで、発言の傾向をワードクラウドやネットワークで可視化します。<br>
@@ -521,8 +521,8 @@ meetings       = sorted({rec.get("meeting_name") for rec in data if rec.get("mee
 speakers       = sorted({rec.get("speaker") for rec in data if rec.get("speaker")})
 speaker_roles  = sorted({rec.get("speaker_role") for rec in data if rec.get("speaker_role")})
 
-# 表示順を「議員」「市長」「行政関係者」に固定（存在しないものはスキップ）
-desired_order = ["議員", "市長", "行政関係者"]
+# 表示順を「議員」「知事」「行政関係者」に固定（存在しないものはスキップ）
+desired_order = ["議員", "知事","委員", "行政関係者"]
 speaker_roles = [r for r in desired_order if r in speaker_roles] + [r for r in speaker_roles if r not in desired_order]
 
 # --- ネットワーク系の初期値 ---

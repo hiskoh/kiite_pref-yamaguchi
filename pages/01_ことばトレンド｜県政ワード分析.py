@@ -494,12 +494,12 @@ st.markdown("""
 <style>
 /* MultiSelect の選択タグ（BaseWeb Tag） */
 .stMultiSelect [data-baseweb="tag"]{
-  background-color:#eef3f8 !important;  /* 薄い青グレー */
-  color:#1f2937 !important;              /* 濃いグレー文字 */
-  border:1px solid #d1d5db !important;   /* グレー罫線 */
+  background-color:#eef3f8 !important;
+  color:#1f2937 !important;
+  border:1px solid #d1d5db !important;
 }
 .stMultiSelect [data-baseweb="tag"] [data-baseweb="tag-close-icon"]{
-  color:#6b7280 !important;              /* 閉じる×の色も控えめに */
+  color:#6b7280 !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -515,110 +515,90 @@ if not data:
     st.warning("事前集計データが空でした。")
     st.stop()
 
-# フィルタ用のユニーク値収集
-years          = sorted({rec.get("year") for rec in data if rec.get("year")})
-meetings       = sorted({rec.get("meeting_name") for rec in data if rec.get("meeting_name")})
-speakers       = sorted({rec.get("speaker") for rec in data if rec.get("speaker")})
-speaker_roles  = sorted({rec.get("speaker_role") for rec in data if rec.get("speaker_role")})
+# ========= CHANGED: 役職の限定（知事・委員のみ）+ 会議名プレフィックスを付与 =========
+ALLOWED_ROLES = {"知事", "委員"}
 
-# 表示順を「議員」「知事」「行政関係者」に固定（存在しないものはスキップ）
-desired_order = ["議員", "知事","委員", "行政関係者"]
-speaker_roles = [r for r in desired_order if r in speaker_roles] + [r for r in speaker_roles if r not in desired_order]
+def get_meeting_prefix(name: str | None) -> str | None:
+    if not name:
+        return None
+    # 指定の全角ハイフン '－' で分割し、手前を採用
+    return str(name).split("－")[0].strip()
 
-# --- ネットワーク系の初期値 ---
-# 推奨デフォルト（きめ）
-DEFAULT_TOPK = 30
-DEFAULT_MAXN = 80
-DEFAULT_MINEDGE = 2
-DEFAULT_LABEL_FONT = 22
-DEFAULT_WEIGHT_MODE = "binary"
-DEFAULT_PHYSICS = True   
+# データ側にプレフィックスを計算して持たせる（表示・フィルタ用）
+for r in data:
+    r["_meeting_prefix"] = get_meeting_prefix(r.get("meeting_name"))
 
-# session_state 初期化
-ss = st.session_state
-ss.setdefault("top_k_per_doc", DEFAULT_TOPK)
-ss.setdefault("max_nodes_global", DEFAULT_MAXN)
-ss.setdefault("min_edge_weight", DEFAULT_MINEDGE)
-ss.setdefault("weight_mode", DEFAULT_WEIGHT_MODE)
-ss.setdefault("label_font_size", DEFAULT_LABEL_FONT)
-ss.setdefault("physics_on", DEFAULT_PHYSICS)
+# ========= CHANGED: フィルタ用ユニーク値は ALLOWED_ROLES に限定 =========
+years = sorted({
+    r.get("year")
+    for r in data
+    if r.get("speaker_role") in ALLOWED_ROLES and r.get("year")
+})
+# 発言者は知事・委員の発言者だけ
+speakers = sorted({
+    r.get("speaker")
+    for r in data
+    if r.get("speaker_role") in ALLOWED_ROLES and r.get("speaker")
+})
+# 会議はプレフィックスで集約
+meeting_prefixes = sorted({
+    r.get("_meeting_prefix")
+    for r in data
+    if r.get("speaker_role") in ALLOWED_ROLES and r.get("_meeting_prefix")
+})
 
-# 自動調整関連（必要な既定値）
-ss.setdefault("min_edge_user_touched", False)
-ss.setdefault("auto_min_edge", True)
-ss.setdefault("target_max_edges", 200)  
-ss.setdefault("min_edge_cap", 20)
-
-# --- フィルタ UI（複数選択対応：合算できる）---
+# ========= CHANGED: 役職セレクタは非表示。1行に（発言者／年／会議）を配置 =========
 st.divider()
 st.subheader("条件")
 
-# “すべて” を実際の全選択に展開する共通関数（MultiSelect用）
 def expand_all(selected, universe):
     if ("すべて" in selected) or (not selected):
         return set(universe)
     return set(selected)
 
-# ---------- 1行目：発言者種別と 発言者 ----------
-
-# 役職→発言者 の対応表の作成
-speakers_by_role = defaultdict(set)
-for r in data:
-    role = r.get("speaker_role")
-    sp   = r.get("speaker")
-    if role and sp:
-        speakers_by_role[role].add(sp)
-        
-c1, c2 = st.columns(2)
+# 1行3カラム：発言者（単一）・発言年（複数）・会議名（複数、プレフィックス）
+c1, c2, c3 = st.columns(3)
 
 with c1:
-    # 発言者区分：単一選択（selectbox）
-    default_idx = speaker_roles.index("議員") if "議員" in speaker_roles else 0
-    sel_role = st.selectbox("発言者区分", speaker_roles, index=default_idx, key="role_sb")
-
-# 役職に応じた発言者候補
-allowed_speakers = sorted(speakers_by_role.get(sel_role, set()))
+    speaker_options = ["すべて"] + speakers
+    current_speaker = st.session_state.get("speaker_sb", "すべて")
+    if current_speaker not in speaker_options:
+        current_speaker = "すべて"
+    sel_speaker = st.selectbox("発言者", speaker_options,
+                               index=speaker_options.index(current_speaker),
+                               key="speaker_sb")
 
 with c2:
-    # 発言者：単一選択（selectbox）。"すべて" も選べる
-    speaker_options = ["すべて"] + allowed_speakers
-    current = st.session_state.get("speaker_sb", "すべて")
-    if current not in speaker_options:
-        current = "すべて"
-    sel_speaker = st.selectbox("発言者", speaker_options, index=speaker_options.index(current), key="speaker_sb")
-
-# ---------- 2行目：発言年 と 会議名 ----------
-c3, c4 = st.columns(2)
-with c3:
     sel_years = st.multiselect("発言年", ["すべて"] + years, default=["すべて"])
-with c4:
-    sel_meet = st.multiselect("会議名", ["すべて"] + meetings, default=["すべて"])
 
+with c3:
+    sel_meet_prefix = st.multiselect("会議名（プレフィックス）",
+                                     ["すべて"] + meeting_prefixes,
+                                     default=["すべて"])
 
-# --------- セレクションを集合に展開 ----------
-years_set = expand_all(sel_years, years)      # multiselect
-meet_set  = expand_all(sel_meet, meetings)    # multiselect
+years_set = expand_all(sel_years, years)
+meet_prefix_set = expand_all(sel_meet_prefix, meeting_prefixes)
 
-#単一選択（selectbox）はスカラー
+# 発言者は単一選択のまま（“すべて” は全員許容）
 if sel_speaker == "すべて":
-    speaker_set = set(allowed_speakers)
+    speaker_set = set(speakers)
 else:
     speaker_set = {sel_speaker}
 
-# --------- フィルタ適用（qa_role条件を削除／speaker_roleは単一一致） ----------
+# ========= CHANGED: フィルタは 役職を ALLOWED_ROLES に限定、会議はプレフィックスで一致 =========
 filtered = [
     r for r in data
-    if (r.get("year") in years_set)
-    and (r.get("meeting_name") in meet_set)
+    if (r.get("speaker_role") in ALLOWED_ROLES)
+    and (r.get("year") in years_set)
+    and (r.get("_meeting_prefix") in meet_prefix_set)
     and (r.get("speaker") in speaker_set)
-    and (r.get("speaker_role") == sel_role)
 ]
+
 # ▼ フィルタ構成のシグネチャ（変更検知用）
 filter_sig = (
-    sel_role,
     tuple(sorted(speaker_set)),
     tuple(sorted(years_set)),
-    tuple(sorted(meet_set)),
+    tuple(sorted(meet_prefix_set)),
 )
 
 # フィルタが前回から変わっていれば、自動調整を再び有効化する初期状態へ戻す

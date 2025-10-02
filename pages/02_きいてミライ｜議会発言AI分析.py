@@ -6,7 +6,7 @@ from openai import OpenAI
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
-st.set_page_config(page_title="きいてミライ｜市長発言AI分析", layout="wide", page_icon="🏛️")
+st.set_page_config(page_title="きいてミライ｜議会発言AI分析", layout="wide", page_icon="🏛️")
 
 def render_items(items):
     if not items:
@@ -39,12 +39,12 @@ EMBED_MODEL         = "text-embedding-3-small"
 
 #AWSの設定
 AWS_REGION          = "us-west-2"
-OUTPUT_PREFIX       = "mayor_chunk_jsonl/" 
+OUTPUT_PREFIX       = "pref_yamaguchi/chunks/" 
 SCORE_THRESHOLD     = 0.0
 AWS_ACCESS_KEY_S    = st.secrets["AWS-KEY"]["AWS_ACCESS_KEY"]
 AWS_SECRET_KEY_S    = st.secrets["AWS-KEY"]["AWS_SECRET_KEY"]     
 DATA_BUCKET_NAME    = st.secrets["AWS-KEY"]["DATA_BUCKET_NAME"]        
-S3_INDEX_ARN_MAYOR        = st.secrets["AWS-KEY"]["VECTOR_INDEX_ARN_MAYOR"]
+S3_INDEX_ARN        = st.secrets["AWS-KEY"]["VECTOR_INDEX_ARN"]
 # ====== ▲ 初期値設定 ========================================================
 
 for key in ["agreed", "query", "send_now", "last_answer", "last_matches", "is_generating", "input", "input_value", "clarified", "clarify_active", "suggestions_sampled"]:
@@ -57,11 +57,11 @@ for key in ["agreed", "query", "send_now", "last_answer", "last_matches", "is_ge
             st.session_state[key] = False
 
 if not st.session_state.agreed:
-    st.title("🏛️きいてミライ｜市長発言AI分析")
+    st.title("🏛️きいてミライ｜議会発言AI分析")
     st.markdown("""
     ### ご利用にあたってのご案内
 
-    - このチャットでは、山口市長の過去の発言（定例会見、議会初日に行われる市政概況報告）をもとに、市長の見解を知ることができます。 
+    - このチャットでは、議会での過去の発言をもとに、各発言者の見解を知ることができます。 
     - チャット内容は記録されます。内容の記録に同意された方のみ、チャットをご利用ください。 
     - **個人情報（氏名・住所・連絡先など）の入力は行わないでください。**  
     """)
@@ -80,7 +80,7 @@ def get_gspread_client():
 
 def log_to_gsheet(question, answer):
     client_gs = get_gspread_client()
-    sheet = client_gs.open_by_key(st.secrets["kiite-mirai"]["GOOGLE_MIRAI_LOG_SHEET_ID"]).worksheet("logs")
+    sheet = client_gs.open_by_key(st.secrets["GOOGLE"]["PREFYAM_LOG_SHEET_ID"]).worksheet("logs")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sheet.append_row([now, question, answer])
 
@@ -161,7 +161,7 @@ def _query_s3vectors(query_text: str, top_k_: int, score_threshold: float):
 
     # 多めに取得
     res = s3v_client.query_vectors(
-        indexArn=S3_INDEX_ARN_MAYOR,
+        indexArn=S3_INDEX_ARN,
         queryVector={"float32": qvec},
         topK=max(TOPK_CANDIDATES, top_k_),
         returnMetadata=True,
@@ -269,7 +269,7 @@ def search_s3vector_and_respond(query):
             st.markdown(m.get("text", ""))
             st.markdown(source, unsafe_allow_html=True)
 
-st.title("🏛️ きいてミライ｜市長発言AI分析")
+st.title("🏛️ きいてミライ｜議会発言AI分析")
 
 # --- チャット欄（送信ボタンなし・Enter送信） ---
 st.markdown("---\n\n#### 💬 質問してみよう")
@@ -284,7 +284,7 @@ st.text_input(
 # --- サジェスト ---
 if not st.session_state.get("clarify_active", False):
     suggestions_master = [
-        "防災に関する市長の発言はありますか？",
+        "防災に関する発言はありますか？",
         "子育て支援の方針について教えて",
         "地域活性化に向けた取り組みは？"
     ]
@@ -362,7 +362,7 @@ if st.session_state.is_generating:
 elif st.session_state.last_answer:
     st.divider()
     st.caption("入力された質問に対して、AIが類似度が高いと判断した上位10件の発言をもとに回答します")
-    st.markdown("#### 💡 市長発言のまとめ")
+    st.markdown("#### 💡 発言のまとめ")
     st.success(st.session_state.last_answer)  #  サマリ本文の出力位置
     
     st.subheader("関連発言の詳細")
@@ -407,11 +407,8 @@ elif st.session_state.last_answer:
                 margin-bottom:0.8em;
                 ">
                 🔗 公式情報はこちらからご覧いただけます<br>
-                ・ <a href="https://www.city.yamaguchi.lg.jp/site/shicho/list68.html" target="_blank">
-                    山口市 市長の部屋 記者会見（市公式HP）
-                  </a> <br>
-                ・ <a href="https://www.youtube.com/playlist?list=PLSBXr_PDKAbMOBbQdeQslWsrmSr-LyOdl" target="_blank">
-                    市長定例記者会見（市公式YouTube）
+                ・ <a href="https://ssp.kaigiroku.net/tenant/prefyamaguchi/pg/index.html" target="_blank">
+                    山口県議会議事録
                   </a>
             </div>
             """,
@@ -432,8 +429,8 @@ elif st.session_state.last_answer:
                 margin-bottom:0.8em;
                 ">
                 🔗 公式情報はこちらからご覧いただけます<br>
-                ・ <a href="https://www.city.yamaguchi.yamaguchi.dbsr.jp/index.php/" target="_blank">
-                    山口市議会 議事録（公式HP）
+                ・ <a href="https://ssp.kaigiroku.net/tenant/prefyamaguchi/pg/index.html" target="_blank">
+                    山口県議会議事録
                   </a>
             </div>
             """,
